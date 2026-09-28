@@ -1,0 +1,10 @@
+<resources>
+    <color name="bg_dark">#0F172A</color>
+    <color name="card_dark">#1E293B</color>
+    <color name="card_border">#334155</color>
+    <color name="orange_brand">#F97316</color>
+    <color name="amber_brand">#D97706</color>
+    <color name="emerald_active">#10B981</color>
+    <color name="text_white">#F8FAFC</color>
+    <color name="text_muted">#94A3B8</color>
+</resources>

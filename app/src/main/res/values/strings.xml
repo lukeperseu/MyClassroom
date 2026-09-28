@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Minha Sala</string>
+    <string name="widget_name">Minha Sala (Anhanguera)</string>
+    <string name="widget_no_class">Sem aula agora</string>
+    <string name="widget_in_class">EM AULA</string>
+    <string name="widget_loading">Buscando sala...</string>
+</resources>
