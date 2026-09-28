@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:padding="8dp">
+
+    <!-- 1. VIEW WHEN CLASS IS ACTIVE NOW -->
+    <LinearLayout
+        android:id="@+id/layout_has_class"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="gone">
+
+        <!-- Status Pill -->
+        <TextView
+            android:id="@+id/tv_status_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/room_badge"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:text="EM AULA AGORA"
+            android:textColor="#34D399"
+            android:textSize="9sp"
+            android:textStyle="bold" />
+
+        <!-- Big Hero Room Name (e.g. Sala 07, Lab Info 1) -->
+        <TextView
+            android:id="@+id/tv_room_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="2"
+            android:text="Sala 07"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <!-- Room Location (e.g. Térreo, 1º Andar) -->
+        <TextView
+            android:id="@+id/tv_room_location"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Térreo"
+            android:textColor="#FDBA74"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+
+        <!-- Discipline snippet -->
+        <TextView
+            android:id="@+id/tv_discipline_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:text="Estágio Básico I"
+            android:textColor="#94A3B8"
+            android:textSize="9sp" />
+    </LinearLayout>
+
+    <!-- 2. VIEW WHEN NO CLASS RIGHT NOW (DISPLAYS PINTEREST ICON) -->
+    <LinearLayout
+        android:id="@+id/layout_no_class"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="visible">
+
+        <ImageView
+            android:id="@+id/iv_widget_logo"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="@string/app_name"
+            android:scaleType="centerCrop"
+            android:src="@drawable/app_icon" />
+
+        <TextView
+            android:id="@+id/tv_no_class_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/widget_no_class"
+            android:textColor="#94A3B8"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_next_class_preview"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="1"
+            android:text=""
+            android:textColor="#FDBA74"
+            android:textSize="9sp" />
+    </LinearLayout>
+
+</RelativeLayout>
