@@ -1,14 +1,22 @@
 package br.com.anhanguera.minhasala
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.View
 import android.widget.RemoteViews
+import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -16,6 +24,10 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class RoomWidgetProvider : AppWidgetProvider() {
@@ -28,6 +40,13 @@ class RoomWidgetProvider : AppWidgetProvider() {
         const val KEY_TURNO = "turno"
         const val KEY_SEMESTER = "semester"
         const val KEY_API_URL = "api_url"
+
+        // Cache keys for room tracking
+        const val KEY_LAST_RECORDED_ROOM = "last_recorded_room"
+        const val KEY_LAST_RECORDED_DATE = "last_recorded_date"
+
+        const val CHANNEL_ID = "room_changes_alert_channel"
+        const val NOTIFICATION_ID = 1007
 
         // Default deployed API endpoint
         const val DEFAULT_BASE_URL = "https://ais-dev-sbtair6avqepdyav2d5553-644130323775.us-west2.run.app"
@@ -42,6 +61,121 @@ class RoomWidgetProvider : AppWidgetProvider() {
                 action = ACTION_REFRESH_WIDGET
             }
             context.sendBroadcast(intent)
+        }
+
+        /**
+         * Checks whether the current time is strictly within the 30-minute pre-class window:
+         * - Matutino (Class at 09:00): window is 08:30 to 09:00
+         * - Noturno (Class at 19:00): window is 18:30 to 19:00
+         */
+        fun isWithinPreClassWindow(turno: String?): Boolean {
+            val calendar = Calendar.getInstance()
+            val hour = calendar.get(Calendar.HOUR_OF_DAY)
+            val minute = calendar.get(Calendar.MINUTE)
+            val currentMinuteOfDay = hour * 60 + minute
+
+            val cleanTurno = turno?.lowercase(Locale.getDefault()) ?: ""
+
+            val isMorningWindow = currentMinuteOfDay in 510 until 540 // 08:30 <= time < 09:00
+            val isNightWindow = currentMinuteOfDay in 1110 until 1140 // 18:30 <= time < 19:00
+
+            return when (cleanTurno) {
+                "matutino" -> isMorningWindow
+                "noturno" -> isNightWindow
+                else -> isMorningWindow || isNightWindow
+            }
+        }
+
+        /**
+         * Triggers high-priority notification with distinctive vibration ONLY when room changed
+         */
+        fun triggerRoomChangeNotification(
+            context: Context,
+            newRoom: String,
+            location: String,
+            discipline: String,
+            oldRoom: String
+        ) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            // Ensure channel exists
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    CHANNEL_ID,
+                    "Mudança de Sala (Anhanguera)",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Alertas com vibração quando houver troca de sala 30 min antes da aula"
+                    enableVibration(true)
+                    vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 800)
+                    setShowBadge(true)
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            // Direct vibration invocation for physical feedback
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                    val vibrator = vibratorManager.defaultVibrator
+                    vibrator.vibrate(
+                        VibrationEffect.createWaveform(
+                            longArrayOf(0, 500, 200, 500, 200, 800),
+                            -1
+                        )
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibrator.vibrate(
+                            VibrationEffect.createWaveform(
+                                longArrayOf(0, 500, 200, 500, 200, 800),
+                                -1
+                            )
+                        )
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator.vibrate(longArrayOf(0, 500, 200, 500, 200, 800), -1)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // Intent to open app on tap
+            val openAppIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                openAppIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+            val locationText = if (location.isNotBlank()) " ($location)" else ""
+            val disciplineText = if (discipline.isNotBlank()) " da matéria '$discipline'" else ""
+
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.app_icon)
+                .setContentTitle("⚠️ ATENÇÃO: Mudança de Sala!")
+                .setContentText("Sua aula$disciplineText mudou para a $newRoom$locationText!")
+                .setStyle(
+                    NotificationCompat.BigTextStyle()
+                        .bigText("Atenção! Sua sala foi remanejada:\nAnterior: $oldRoom\n👉 NOVA SALA: $newRoom$locationText\nDisciplina: $discipline")
+                )
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setSound(soundUri)
+                .setVibrate(longArrayOf(0, 500, 200, 500, 200, 800))
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .build()
+
+            notificationManager.notify(NOTIFICATION_ID, notification)
         }
     }
 
@@ -83,6 +217,12 @@ class RoomWidgetProvider : AppWidgetProvider() {
         val semester = prefs.getString(KEY_SEMESTER, "4º") ?: "4º"
         val baseUrl = prefs.getString(KEY_API_URL, DEFAULT_BASE_URL) ?: DEFAULT_BASE_URL
 
+        val calendar = Calendar.getInstance()
+        val hour = calendar.get(Calendar.HOUR_OF_DAY)
+        val minute = calendar.get(Calendar.MINUTE)
+        val currentMinuteOfDay = hour * 60 + minute
+        val todayDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val urlBuilder = Uri.parse("$baseUrl/api/student-portal/schedule").buildUpon()
@@ -90,6 +230,7 @@ class RoomWidgetProvider : AppWidgetProvider() {
                     .appendQueryParameter("turno", turno)
                     .appendQueryParameter("modalidade", modalidade)
                     .appendQueryParameter("semester", semester)
+                    .appendQueryParameter("clientMinuteOfDay", currentMinuteOfDay.toString())
                     .build()
 
                 val request = Request.Builder()
@@ -104,10 +245,57 @@ class RoomWidgetProvider : AppWidgetProvider() {
                     if (response.isSuccessful && responseBody != null) {
                         val json = JSONObject(responseBody)
                         val activeClassObj = if (!json.isNull("activeClass")) json.getJSONObject("activeClass") else null
+                        val todayScheduledObj = if (!json.isNull("todayScheduledClass")) json.getJSONObject("todayScheduledClass") else null
                         val nextClassObj = if (!json.isNull("nextClass")) json.getJSONObject("nextClass") else null
 
+                        val isServerPreWindow = json.optBoolean("isPreClassWindow", false)
+                        val inNotificationWindow = isServerPreWindow || isWithinPreClassWindow(turno)
+
+                        // --- NOTIFICATION & VIBRATION DETECTION ---
+                        // Rule: ONLY notify if we are strictly in the 30-minute pre-class window
+                        // (08:30-09:00 for matutino, 18:30-19:00 for noturno)
+                        if (todayScheduledObj != null) {
+                            val currentRoomName = todayScheduledObj.optString("roomName", "").trim()
+                            val currentRoomLocation = todayScheduledObj.optString("roomLocation", "").trim()
+                            val currentDiscipline = todayScheduledObj.optString("disciplineName", "").trim()
+
+                            val lastRecordedRoom = prefs.getString(KEY_LAST_RECORDED_ROOM, null)
+                            val lastRecordedDate = prefs.getString(KEY_LAST_RECORDED_DATE, null)
+
+                            if (inNotificationWindow) {
+                                // We ARE in the 30-minute pre-class window!
+                                if (lastRecordedDate == todayDateStr &&
+                                    !lastRecordedRoom.isNullOrBlank() &&
+                                    lastRecordedRoom != currentRoomName
+                                ) {
+                                    // ROOM CHANGED DURING THE PRE-CLASS WINDOW!
+                                    triggerRoomChangeNotification(
+                                        context,
+                                        newRoom = currentRoomName,
+                                        location = currentRoomLocation,
+                                        discipline = currentDiscipline,
+                                        oldRoom = lastRecordedRoom
+                                    )
+                                }
+                                // Update current known room for today
+                                prefs.edit()
+                                    .putString(KEY_LAST_RECORDED_ROOM, currentRoomName)
+                                    .putString(KEY_LAST_RECORDED_DATE, todayDateStr)
+                                    .apply()
+                            } else {
+                                // OUTSIDE the 30-minute window:
+                                // Silently save today's scheduled room so we have a baseline,
+                                // but NEVER notify or vibrate outside this window.
+                                prefs.edit()
+                                    .putString(KEY_LAST_RECORDED_ROOM, currentRoomName)
+                                    .putString(KEY_LAST_RECORDED_DATE, todayDateStr)
+                                    .apply()
+                            }
+                        }
+
+                        // --- WIDGET DISPLAY LOGIC ---
+                        // Display room when class is active (starts 30 min before class time)
                         if (activeClassObj != null) {
-                            // 1. CLASS IS ON NOW: Display big room
                             val roomName = activeClassObj.optString("roomName", "Sala")
                             val roomLocation = activeClassObj.optString("roomLocation", "")
                             val disciplineName = activeClassObj.optString("disciplineName", "")
@@ -115,11 +303,13 @@ class RoomWidgetProvider : AppWidgetProvider() {
                             views.setViewVisibility(R.id.layout_has_class, View.VISIBLE)
                             views.setViewVisibility(R.id.layout_no_class, View.GONE)
 
+                            val badgeText = if (inNotificationWindow) "SALA HOJE (EM BREVE)" else "EM AULA AGORA"
+                            views.setTextViewText(R.id.tv_status_badge, badgeText)
                             views.setTextViewText(R.id.tv_room_name, roomName)
                             views.setTextViewText(R.id.tv_room_location, roomLocation)
                             views.setTextViewText(R.id.tv_discipline_name, disciplineName)
                         } else {
-                            // 2. NO CLASS NOW: Display Pinterest Icon
+                            // NO CLASS NOW: Display Pinterest Icon
                             views.setViewVisibility(R.id.layout_has_class, View.GONE)
                             views.setViewVisibility(R.id.layout_no_class, View.VISIBLE)
 
